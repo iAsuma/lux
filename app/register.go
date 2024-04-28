@@ -20,6 +20,7 @@ import (
 	_ "github.com/iawia002/lux/extractors/miaopai"
 	_ "github.com/iawia002/lux/extractors/netease"
 	_ "github.com/iawia002/lux/extractors/pinterest"
+	_ "github.com/iawia002/lux/extractors/pipix"
 	_ "github.com/iawia002/lux/extractors/pixivision"
 	_ "github.com/iawia002/lux/extractors/pornhub"
 	_ "github.com/iawia002/lux/extractors/qq"
