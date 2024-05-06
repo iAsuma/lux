@@ -28,7 +28,6 @@ func New() extractors.Extractor {
 
 // Extract is the main function to extract the data.
 func (e *extractor) Extract(url string, option extractors.Options) ([]*extractors.Data, error) {
-	fmt.Println("pipix start")
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -45,8 +44,6 @@ func (e *extractor) Extract(url string, option extractors.Options) ([]*extractor
 	defer resp.Body.Close() // nolint
 	url = resp.Header.Get("location")
 
-	fmt.Println("loca Url", url)
-
 	itemIds := utils.MatchOneOf(url, `/item/(\d+)`)
 	if len(itemIds) == 0 {
 		return nil, errors.New("unable to get video ID")
@@ -56,17 +53,10 @@ func (e *extractor) Extract(url string, option extractors.Options) ([]*extractor
 	}
 	itemId := itemIds[len(itemIds)-1]
 
-	// dynamic generate cookie
-	//cookie, err := createCookie()
-	//if err != nil {
-	//	return nil, errors.WithStack(err)
-	//}
-
 	api := "https://h5.pipix.com/bds/webapi/item/detail/?item_id=" + itemId + "&source=share"
 
 	// define request headers and sign agent
 	headers := map[string]string{}
-	//headers["Cookie"] = cookie
 	headers["Referer"] = "https://h5.pipix.com/"
 	headers["User-Agent"] = browser.Chrome()
 
@@ -78,8 +68,6 @@ func (e *extractor) Extract(url string, option extractors.Options) ([]*extractor
 	if err = json.Unmarshal([]byte(jsonData), &pipix); err != nil {
 		return nil, errors.WithStack(err)
 	}
-
-	fmt.Println("pipix", pipix)
 
 	mainData, ok := pipix.Data["item"]
 	if !ok {
