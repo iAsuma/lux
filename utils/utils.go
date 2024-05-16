@@ -240,3 +240,14 @@ func Range(min, max int) []int {
 	}
 	return items
 }
+
+// WriteFile 写文件
+func WriteFile(filename string, content string) {
+	f, err := os.Create(filename)
+	defer f.Close()
+	if err != nil {
+		fmt.Println(err.Error())
+	} else {
+		_, err = f.Write([]byte(content))
+	}
+}

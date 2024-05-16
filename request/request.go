@@ -176,6 +176,35 @@ func GetByte(url, refer string, headers map[string]string) ([]byte, error) {
 	return body, nil
 }
 
+// PostByte post request
+func PostByte(url string, body io.Reader, headers map[string]string) ([]byte, error) {
+	if headers == nil {
+		headers = map[string]string{}
+	}
+
+	resp, err := Request(http.MethodPost, url, body, headers)
+	defer resp.Body.Close() // nolint
+
+	var reader io.ReadCloser
+	switch resp.Header.Get("Content-Encoding") {
+	case "gzip":
+		reader, _ = gzip.NewReader(resp.Body)
+	case "deflate":
+		reader = flate.NewReader(resp.Body)
+	default:
+		reader = resp.Body
+	}
+	defer reader.Close() // nolint
+
+	// 读取响应体
+	resBody, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	return resBody, err
+}
+
 // Headers return the HTTP Headers of the url
 func Headers(url, refer string) (http.Header, error) {
 	headers := map[string]string{

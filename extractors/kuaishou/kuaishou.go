@@ -1,15 +1,20 @@
 package kuaishou
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	browser "github.com/EDDYCJY/fake-useragent"
+	"github.com/iawia002/lux/utils"
 	"net/http"
-	"regexp"
+	neturl "net/url"
+	"strconv"
 	"strings"
 
 	"github.com/pkg/errors"
 
 	"github.com/iawia002/lux/extractors"
 	"github.com/iawia002/lux/request"
-	"github.com/iawia002/lux/utils"
 )
 
 func init() {
@@ -44,63 +49,104 @@ func fetchCookies(url string, headers map[string]string) (string, error) {
 
 // Extract is the main function to extract the data.
 func (e *extractor) Extract(url string, option extractors.Options) ([]*extractors.Data, error) {
-	headers := map[string]string{
-		"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:98.0) Gecko/20100101 Firefox/98.0",
-	}
-
-	cookies, err := fetchCookies(url, headers)
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-
-	headers["Cookie"] = cookies
-
-	html, err := request.Get(url, url, headers)
+	c := http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	url2 := url
+	resp, err := c.Do(req)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
+	defer resp.Body.Close() // nolint
+	url = resp.Header.Get("location")
 
-	titles := utils.MatchOneOf(html, `<title>([^<]+)</title>`)
-	if titles == nil || len(titles) < 2 {
-		return nil, errors.New("can not found title")
-	}
+	if strings.Contains(url, "v.douyin.com") {
 
-	title := regexp.MustCompile(`\n+`).ReplaceAllString(strings.TrimSpace(titles[1]), " ")
-
-	qualityRegMap := map[string]*regexp.Regexp{
-		"sd": regexp.MustCompile(`"photoUrl":\s*"([^"]+)"`),
-	}
-
-	streams := make(map[string]*extractors.Stream, 1)
-	for quality, qualityReg := range qualityRegMap {
-		matcher := qualityReg.FindStringSubmatch(html)
-		if len(matcher) != 2 {
-			return nil, errors.WithStack(extractors.ErrURLParseFailed)
+	} else {
+		headers := map[string]string{
+			"User-Agent": browser.Computer(),
+			"Referer":    url2,
+			"Host":       "www.kuaishou.com",
+			"Cookie":     "did=web_",
 		}
 
-		u := strings.ReplaceAll(matcher[1], `\u002F`, "/")
+		dataString, err := request.Get(url, url, headers)
+		utils.WriteFile("zzz.html", dataString)
+		fmt.Println("ddddd", err, dataString)
+		return nil, nil
+	}
 
-		size, err := request.Size(u, url)
+	pUrl, err := neturl.ParseRequestURI(url)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	paramsMap := make(map[string]string)
+	for key, values := range pUrl.Query() {
+		paramsMap[key] = values[0]
+	}
+	paramsMap["h5Domain"] = "v.m.chenzhongtech.com"
+	paramsMap["shareChannel"] = "share_copylink"
+	paramsMap["env"] = "SHARE_VIEWER_ENV_TX_TRICK"
+
+	jsonData, err := json.Marshal(paramsMap)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	apiUrl := "https://v.m.chenzhongtech.com/rest/wd/photo/info"
+	headers := map[string]string{
+		"User-Agent":   browser.Mobile(),
+		"Referer":      url,
+		"Content-Type": "application/json; charset=UTF-8",
+		"Cookie":       "did=web_",
+	}
+
+	resBody, err := request.PostByte(apiUrl, bytes.NewBuffer(jsonData), headers)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	var ddDATA map[string]interface{}
+	err = json.Unmarshal(resBody, &ddDATA)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	var data kuiashouApiData
+	if err = json.Unmarshal(resBody, &data); err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	streams := make(map[string]*extractors.Stream, len(data.Photo.MainMvUrls))
+	for i, v := range data.Photo.MainMvUrls {
+		size, err := request.Size(v.Url, apiUrl)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
 
 		urlData := &extractors.Part{
-			URL:  u,
+			URL:  v.Url,
 			Size: size,
 			Ext:  "mp4",
 		}
-		streams[quality] = &extractors.Stream{
+		streams[strconv.Itoa(i)] = &extractors.Stream{
 			Parts:   []*extractors.Part{urlData},
 			Size:    size,
-			Quality: quality,
+			Quality: strconv.Itoa(i),
 		}
 	}
 
 	return []*extractors.Data{
 		{
 			Site:    "快手 kuaishou.com",
-			Title:   title,
+			Title:   data.Photo.Caption,
 			Type:    extractors.DataTypeVideo,
 			Streams: streams,
 			URL:     url,
